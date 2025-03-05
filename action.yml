@@ -1,0 +1,26 @@
+name: Build gazebo repositories into deb files
+author: Yuki Furuta
+description: Build gazebo to deb files
+
+inputs:
+  destination:
+    description: Path to output directory that stores deb files
+    required: true
+  repos_file:
+    description: Path to .repos files
+    required: true
+  ccache_dir:
+    description: Path to ccache cache dir
+    default: .ccache
+  
+runs:
+  using: composite
+  steps:
+    - name: Build deb packages
+      shell: bash
+      run: ./build.sh
+      working-directory: '${{ github.action_path }}'
+      env:
+        DEB_DIR: '${{ inputs.destination }}'
+        REPOS_FILE: '${{ inputs.repos_file }}'
+        CCACHE_DIR: '${{ inputs.ccache_dir }}'

@@ -1,0 +1,71 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DEB_DIR: "${{ github.workspace }}/deb"
+  CCACHE_DIR: "${{ github.workspace }}/.ccache"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        ubuntu-version: [24.04]
+        arch: [amd64]
+    runs-on: "${{ format('ubuntu-{0}{1}', matrix.ubuntu-version, matrix.arch == 'arm64' && '-arm' || '') }}"
+    steps:
+      - name: Checkout the project
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Get timestamp
+        id: timestamp
+        run: echo "timestamp=$(date -u +%Y-%m-%d-%H%M%S)" >> "$GITHUB_OUTPUT"
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: "${{ env.CCACHE_DIR }}"
+          key: ccache-${{ matrix.ubuntu-version }}-${{ matrix.arch }}-${{ steps.timestamp.outputs.timestamp }}
+          restore-keys: ccache-${{ matrix.ubuntu-version }}-${{ matrix.arch }}-
+      - name: Build debian packages
+        uses: ./
+        with:
+          destination: '${{ env.DEB_DIR }}'
+          repos_file: 'gazebo-${{ matrix.ubuntu-version }}.repos'
+          ccache_dir: '${{ env.CCACHE_DIR }}'
+      - name: List generated deb files
+        run: 'ls -lFah ${{ env.DEB_DIR }}/'
+      - name: Upload deb files
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'deb-${{ matrix.ubuntu-version }}-${{ matrix.arch }}'
+          retention-days: 1
+          path: ${{ env.DEB_DIR }}/
+
+  test:
+    needs: build
+    strategy:
+      matrix:
+        ubuntu-version: [24.04]
+        arch: [amd64]
+    runs-on: "${{ format('ubuntu-{0}{1}', matrix.ubuntu-version, matrix.arch == 'arm64' && '-arm' || '') }}"
+    steps:
+      - name: Download the deb files
+        uses: actions/download-artifact@v4
+        with:
+          name: 'deb-${{ matrix.ubuntu-version }}-${{ matrix.arch }}'
+          path: '${{ env.DEB_DIR }}'
+      - name: Install deb files
+        run: |
+          sudo apt-get update -qq
+          sudo apt install -y -qq --no-install-recommends ${{ env.DEB_DIR }}/*.deb
+        env:
+          DEBIAN_FRONTEND: 'noninteractive'
+      - name: Display gazebo version
+        run: gazebo --version | grep Gazebo
