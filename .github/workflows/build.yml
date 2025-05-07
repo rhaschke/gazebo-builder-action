@@ -8,16 +8,16 @@ on:
   workflow_dispatch:
 
 env:
-  DEB_DIR: "${{ github.workspace }}/deb"
-  CCACHE_DIR: "${{ github.workspace }}/.ccache"
+  DEB_DIR: '${{ github.workspace }}/deb'
+  CCACHE_DIR: '${{ github.workspace }}/.ccache'
 
 jobs:
   build:
     strategy:
       matrix:
-        ubuntu-version: [24.04]
+        os_distro: [noble]
         arch: [amd64, arm64]
-    runs-on: "${{ format('ubuntu-{0}{1}', matrix.ubuntu-version, matrix.arch == 'arm64' && '-arm' || '') }}"
+    runs-on: "${{ format('ubuntu-24.04{0}', matrix.arch == 'arm64' && '-arm' || '') }}"
     steps:
       - name: Checkout the project
         uses: actions/checkout@v4
@@ -30,41 +30,51 @@ jobs:
       - name: Cache ccache
         uses: actions/cache@v4
         with:
-          path: "${{ env.CCACHE_DIR }}"
-          key: ccache-${{ matrix.ubuntu-version }}-${{ matrix.arch }}-${{ steps.timestamp.outputs.timestamp }}
-          restore-keys: ccache-${{ matrix.ubuntu-version }}-${{ matrix.arch }}-
+          path: '${{ env.CCACHE_DIR }}'
+          key: ccache-${{ matrix.os_distro }}-${{ matrix.arch }}-${{ steps.timestamp.outputs.timestamp }}
+          restore-keys: ccache-${{ matrix.os_distro }}-${{ matrix.arch }}-
       - name: Build debian packages
+        id: build
         uses: ./
         with:
+          os_distro: '${{ matrix.os_distro }}'
           destination: '${{ env.DEB_DIR }}'
-          repos_file: 'gazebo-${{ matrix.ubuntu-version }}.repos'
+          repos_file: 'gazebo.repos'
           ccache_dir: '${{ env.CCACHE_DIR }}'
-      - name: List generated deb files
-        run: 'ls -lFah ${{ env.DEB_DIR }}/'
+      - name: Archive generated deb files
+        if: ${{ always() && (steps.build.conclusion == 'success' || steps.build.conclusion == 'failure') }}
+        run: |
+          ls -lFah ${{ env.DEB_DIR }}/
+          tar czf deb.tar.gz -C ${{ env.DEB_DIR }} .
       - name: Upload deb files
         uses: actions/upload-artifact@v4
+        if: ${{ always() && (steps.build.conclusion == 'success' || steps.build.conclusion == 'failure') }}
         with:
-          name: 'deb-${{ matrix.ubuntu-version }}-${{ matrix.arch }}'
+          name: 'deb-${{ matrix.os_distro }}-${{ matrix.arch }}'
           retention-days: 1
-          path: ${{ env.DEB_DIR }}/
+          path: deb.tar.gz
 
   test:
     needs: build
     strategy:
       matrix:
-        ubuntu-version: [24.04]
+        os_distro: [noble]
         arch: [amd64, arm64]
-    runs-on: "${{ format('ubuntu-{0}{1}', matrix.ubuntu-version, matrix.arch == 'arm64' && '-arm' || '') }}"
+    runs-on: "${{ format('ubuntu-24.04{0}', matrix.arch == 'arm64' && '-arm' || '') }}"
+    container:
+      image: 'ubuntu:${{ matrix.os_distro }}'
     steps:
       - name: Download the deb files
         uses: actions/download-artifact@v4
         with:
-          name: 'deb-${{ matrix.ubuntu-version }}-${{ matrix.arch }}'
-          path: '${{ env.DEB_DIR }}'
+          name: 'deb-${{ matrix.os_distro }}-${{ matrix.arch }}'
+          path: '.'
       - name: Install deb files
         run: |
+          mkdir ${{ env.DEB_DIR }}
+          (cd ${{ env.DEB_DIR }} && tar xf ../deb.tar.gz)
           sudo apt-get update -qq
-          sudo apt install -y -qq --no-install-recommends ${{ env.DEB_DIR }}/*.deb
+          sudo apt-get install -y -qq --no-install-recommends ${{ env.DEB_DIR }}/*.deb
         env:
           DEBIAN_FRONTEND: 'noninteractive'
       - name: Display gazebo version

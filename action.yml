@@ -9,9 +9,18 @@ inputs:
   repos_file:
     description: Path to .repos files
     required: true
+  os_distro:
+    description: Target Ubuntu OS distribution (i.e. noble, jammy)
+    required: true
   ccache_dir:
     description: Path to ccache cache dir
     default: .ccache
+  build_parallel_jobs:
+    description: Parallel job numbers
+    default: ''
+  apt_cache_port:
+    description: Port of apt cache proxy server
+    default: 3142
   
 runs:
   using: composite
@@ -21,6 +30,9 @@ runs:
       run: ./build.sh
       working-directory: '${{ github.action_path }}'
       env:
+        OS_DISTRO: '${{ inputs.os_distro }}'
         DEB_DIR: '${{ inputs.destination }}'
         REPOS_FILE: '${{ inputs.repos_file }}'
         CCACHE_DIR: '${{ inputs.ccache_dir }}'
+        BUILD_PARALLEL_JOBS: '${{ inputs.BUILD_PARALLEL_JOBS }}'
+        APT_CACHE_PORT: '${{ inputs.apt_cache_port }}'

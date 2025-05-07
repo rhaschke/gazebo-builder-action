@@ -1,6 +1,10 @@
 #!/bin/bash -e
 # Adapted from https://github.com/ros-industrial/industrial_ci/blob/master/industrial_ci/src/util.sh
 # Copyright 2016-2025, Isaac I. Y. Saito, Mathias Lüdtke, Robert Haschke, Yuki Furuta
+#
+# Updates (Yuki Furuta):
+#  - Some unused functions such as ici_step, ici_mark_deprecated are removed
+#  - Fixed linter errors
 
 export ANSI_RED=31
 export ANSI_GREEN=32
@@ -98,6 +102,32 @@ ici_get_log_cmd() {
     esac
     shift
   done
+}
+
+
+# only show output on failure, otherwise be quiet
+ici_quiet() {
+    local out; out=$(mktemp)
+    local err=0
+    "$@" &> "$out" || err=$?
+    if [ "$err" -ne 0 ]; then
+        ici_redirect cat "$out"
+    fi
+    rm -f "$out"
+    return "$err"
+}
+
+# show full output on failure, otherwise filtered stdout
+ici_filter() {
+    local filter=$1; shift
+    local out; out=$(mktemp)
+    "$@" | grep -E "$filter" | ici_redirect cat || true
+    local err=${PIPESTATUS[0]}
+    if [ "$err" -ne 0 ]; then
+        ici_redirect cat "$out"
+    fi
+    rm -f "$out"
+    return "$err"
 }
 
 _ici_guard() {
@@ -294,6 +324,28 @@ ici_asroot() {
        "$@"
    fi
  }
+
+# define defaults to disable verbose output for individual build steps
+# format: filter:variable:default
+export DEFAULT_QUIET_CONFIG=(
+  "sbuild:SBUILD_QUIET:ici_quiet"
+  "ccache:CCACHE_QUIET:ici_quiet"
+  "apt:APT_QUIET:ici_filter \"Setting up\""
+)
+function ici_setup_vars {
+  local filters=$1; shift
+  for spec in "$@"; do
+    IFS=: read -r filter variable default <<< "$spec"
+    if [ "$filters" = true ] || [[ "$filters" == *"$filter"* ]]; then
+      default=""
+    fi
+    eval "export ${variable}=($default)"
+  done
+}
+
+function ici_apt_install {
+  ici_asroot apt-get -qq install -y --no-upgrade --no-install-recommends "$@"
+}
 
 gha_cmd() {
   local cmd=$1; shift
