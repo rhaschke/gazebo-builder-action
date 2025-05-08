@@ -71,7 +71,7 @@ jobs:
           path: '.'
       - name: Install deb files
         run: |
-          tar xf ${{ github.workspace }}/deb.tar.gz
+          tar xf ./deb.tar.gz
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends ./*.deb
         env:
