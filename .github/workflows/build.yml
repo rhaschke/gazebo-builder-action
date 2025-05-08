@@ -63,6 +63,7 @@ jobs:
     runs-on: "${{ format('ubuntu-24.04{0}', matrix.arch == 'arm64' && '-arm' || '') }}"
     container:
       image: 'ubuntu:${{ matrix.os_distro }}'
+      options: '--workdir ${{ github.workspace }}'
     steps:
       - name: Download the deb files
         uses: actions/download-artifact@v4
