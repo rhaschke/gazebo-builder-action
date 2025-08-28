@@ -59,6 +59,9 @@ jobs:
       matrix:
         os_distro: [jammy, noble]
         arch: [amd64, arm64]
+        exclude:
+          - os_distro: jammy
+            arch: amd64
     runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
     container:
       image: 'ubuntu:${{ matrix.os_distro }}'
@@ -71,10 +74,15 @@ jobs:
           path: '.'
       - name: Install Gazebo
         run: |
+          apt-get update -q
+          apt-get install -y -q apt-utils
           tar xf ./deb.tar
-          rm ./deb.tar
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends ./*.deb
+          rm -f ./deb.tar
+          apt-ftparchive packages . > Packages
+          apt-ftparchive release  . > Release
+          echo "deb [trusted=yes] file://$(realpath "$PWD") ./" | tee /etc/apt/sources.list.d/debs.list
+          apt-get update -q
+          apt-get install -y -q --no-install-recommends gazebo11
         env:
           DEBIAN_FRONTEND: noninteractive
       - name: Display gazebo version
