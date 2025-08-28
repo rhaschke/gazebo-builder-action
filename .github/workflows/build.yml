@@ -14,25 +14,25 @@ env:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         os_distro: [jammy, noble]
         arch: [amd64, arm64]
-    runs-on: "${{ format('ubuntu-24.04{0}', matrix.arch == 'arm64' && '-arm' || '') }}"
+        exclude:
+          - os_distro: jammy
+            arch: amd64
+    runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
     steps:
       - name: Checkout the project
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
           fetch-depth: 0
-      - name: Get timestamp
-        id: timestamp
-        run: echo "timestamp=$(date -u +%Y-%m-%d-%H%M%S)" >> "$GITHUB_OUTPUT"
       - name: Cache ccache
         uses: actions/cache@v4
         with:
           path: '${{ env.CCACHE_DIR }}'
-          key: ccache-${{ matrix.os_distro }}-${{ matrix.arch }}-${{ steps.timestamp.outputs.timestamp }}
-          restore-keys: ccache-${{ matrix.os_distro }}-${{ matrix.arch }}-
+          key: ccache-${{ matrix.os_distro }}-${{ matrix.arch }}
       - name: Build debian packages
         id: build
         uses: ./
@@ -43,38 +43,39 @@ jobs:
           ccache_dir: '${{ env.CCACHE_DIR }}'
       - name: Archive generated deb files
         if: ${{ always() && (steps.build.conclusion == 'success' || steps.build.conclusion == 'failure') }}
-        run: |
-          ls -lFah ${{ env.DEB_DIR }}/
-          tar czf deb.tar.gz -C ${{ env.DEB_DIR }} .
+        run: tar cf deb.tar -C ${{ env.DEB_DIR }} .
       - name: Upload deb files
         uses: actions/upload-artifact@v4
         if: ${{ always() && (steps.build.conclusion == 'success' || steps.build.conclusion == 'failure') }}
         with:
           name: 'deb-${{ matrix.os_distro }}-${{ matrix.arch }}'
           retention-days: 1
-          path: deb.tar.gz
+          path: deb.tar
 
   test:
     needs: build
     strategy:
+      fail-fast: false
       matrix:
-        os_distro: [noble]
+        os_distro: [jammy, noble]
         arch: [amd64, arm64]
-    runs-on: "${{ format('ubuntu-24.04{0}', matrix.arch == 'arm64' && '-arm' || '') }}"
+    runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
     container:
       image: 'ubuntu:${{ matrix.os_distro }}'
     steps:
       - name: Download the deb files
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: 'deb-${{ matrix.os_distro }}-${{ matrix.arch }}'
           path: '.'
-      - name: Install deb files
+      - name: Install Gazebo
         run: |
-          tar xf ./deb.tar.gz
+          tar xf ./deb.tar
+          rm ./deb.tar
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends ./*.deb
         env:
-          DEBIAN_FRONTEND: 'noninteractive'
+          DEBIAN_FRONTEND: noninteractive
       - name: Display gazebo version
-        run: gazebo --version | grep Gazebo
+        run: gazebo --version
